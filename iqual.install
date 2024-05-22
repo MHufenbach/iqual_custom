@@ -12,45 +12,47 @@ use Drupal\linkit\SuggestionManager;
 use Drupal\pagedesigner\Entity\Element;
 use Drupal\user\Entity\Role;
 use Drupal\user\Entity\User;
-use Drupal\user\PermissionHandlerInterface;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Apply changes to configuration / environment on installation.
  */
 function iqual_install() {
   _set_iqual_base_settings();
+  $author = Role::load('author');
+  if ($author) {
+    $author->grantPermission('restful get frontendpublishing_transitions');
+    $author->grantPermission('restful patch frontendpublishing_transitions');
+    $author->grantPermission('restful patch frontendpublishing_move');
+    $author->grantPermission('restful patch frontendpublishing_publish');
+    $author->grantPermission('restful patch frontendpublishing_unpublish');
+    $author->grantPermission('restful patch frontendpublishing_copy');
+    $author->grantPermission('restful post frontendpublishing_copy');
+    $author->save();
+  }
 
-  // Get an instance of the permission handler.
-  $permission_handler = \Drupal::service('user.permissions');
+  $editor = Role::load('editor');
+  if ($editor) {
+    $editor->grantPermission('restful get frontendpublishing_transitions');
+    $editor->grantPermission('restful patch frontendpublishing_transitions');
+    $editor->grantPermission('restful patch frontendpublishing_move');
+    $editor->grantPermission('restful patch frontendpublishing_publish');
+    $editor->grantPermission('restful patch frontendpublishing_unpublish');
+    $editor->grantPermission('restful patch frontendpublishing_copy');
+    $editor->grantPermission('restful post frontendpublishing_copy');
+    $editor->save();
+  }
 
-  // Get a list of all defined permissions.
-  $all_permissions = array_keys($permission_handler->getPermissions());
-
-  $roles = ['author', 'editor', 'designer'];
-  $permissions = [
-    'restful get frontendpublishing_transitions',
-    'restful patch frontendpublishing_transitions',
-    'restful patch frontendpublishing_move',
-    'restful patch frontendpublishing_publish',
-    'restful patch frontendpublishing_unpublish',
-    'restful patch frontendpublishing_copy',
-    'restful post frontendpublishing_copy',
-  ];
-
-  foreach ($roles as $role_name) {
-    $role = Role::load($role_name);
-    if ($role) {
-      foreach ($permissions as $permission) {
-        // Skip granting the permission if it doesn't exist.
-        if (!in_array($permission, $all_permissions)) {
-          continue;
-        }
-
-        $role->grantPermission($permission);
-      }
-
-      $role->save();
-    }
+  $designer = Role::load('designer');
+  if ($designer) {
+    $designer->grantPermission('restful get frontendpublishing_transitions');
+    $designer->grantPermission('restful patch frontendpublishing_transitions');
+    $designer->grantPermission('restful patch frontendpublishing_move');
+    $designer->grantPermission('restful patch frontendpublishing_publish');
+    $designer->grantPermission('restful patch frontendpublishing_unpublish');
+    $designer->grantPermission('restful patch frontendpublishing_copy');
+    $designer->grantPermission('restful post frontendpublishing_copy');
+    $designer->save();
   }
 }
 
@@ -333,25 +335,19 @@ function iqual_update_10001(&$sandbox) {
  * Remove "administer site configuration" from pagedesigner roles.
  */
 function iqual_update_10002(&$sandbox) {
-  $potentialRoles = [
-    'author',
-    'editor',
-    'designer',
-    'iqbm_author',
-    'iqbm_editor',
-    'iqbm_designer',
-    'iq_blog_author',
-    'authenticated'
-  ];
-
-  $roleStorage = \Drupal::entityTypeManager()->getStorage('user_role');
-
-  // Filter out roles that don't exist.
-  $existingRoles = array_filter($potentialRoles, function ($role) use ($roleStorage) {
-    return $roleStorage->load($role) !== NULL;
-  });
-
-  $roles = $roleStorage->loadMultiple($existingRoles);
+  $roles = \Drupal::entityTypeManager()->getStorage('user_role')
+    ->loadMultiple(
+      [
+        'author',
+        'editor',
+        'designer',
+        'iqbm_author',
+        'iqbm_editor',
+        'iqbm_designer',
+        'iq_blog_author',
+        'authenticated',
+      ]
+    );
 
   /** @var \Drupal\user\Entity\Role $role */
   foreach ($roles as $role) {
@@ -465,5 +461,27 @@ function iqual_update_10004() {
     $user = User::load($uid);
     $user->timezone->value = 'Europe/Zurich';
     $user->save();
+  }
+}
+
+/**
+ * Activate all frontendpublishing config rest resources.
+ */
+function iqual_update_10005(&$sandbox) {
+  $config_ids = [
+    'rest.resource.frontendpublishing_copy',
+    'rest.resource.frontendpublishing_move',
+    'rest.resource.frontendpublishing_publish',
+    'rest.resource.frontendpublishing_transitions',
+    'rest.resource.frontendpublishing_unpublish',
+  ];
+  foreach ($config_ids as $config_id) {
+    $config_path = \Drupal::service('extension.list.module')
+      ->getPath('frontendpublishing') . '/config/install/' . $config_id . '.yml';
+    $data = Yaml::parseFile($config_path);
+    $config = \Drupal::configFactory()->getEditable($config_id);
+    if (empty($config->getRawData())) {
+      $config->setData($data)->save(TRUE);
+    }
   }
 }
