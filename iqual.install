@@ -12,6 +12,7 @@ use Drupal\linkit\SuggestionManager;
 use Drupal\pagedesigner\Entity\Element;
 use Drupal\user\Entity\Role;
 use Drupal\user\Entity\User;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Apply changes to configuration / environment on installation.
@@ -460,5 +461,27 @@ function iqual_update_10004() {
     $user = User::load($uid);
     $user->timezone->value = 'Europe/Zurich';
     $user->save();
+  }
+}
+
+/**
+ * Activate all frontendpublishing config rest resources.
+ */
+function iqual_update_10005(&$sandbox) {
+  $config_ids = [
+    'rest.resource.frontendpublishing_copy',
+    'rest.resource.frontendpublishing_move',
+    'rest.resource.frontendpublishing_publish',
+    'rest.resource.frontendpublishing_transitions',
+    'rest.resource.frontendpublishing_unpublish',
+  ];
+  foreach ($config_ids as $config_id) {
+    $config_path = \Drupal::service('extension.list.module')
+      ->getPath('frontendpublishing') . '/config/install/' . $config_id . '.yml';
+    $data = Yaml::parseFile($config_path);
+    $config = \Drupal::configFactory()->getEditable($config_id);
+    if (empty($config->getRawData())) {
+      $config->setData($data)->save(TRUE);
+    }
   }
 }
