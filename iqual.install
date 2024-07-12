@@ -12,46 +12,45 @@ use Drupal\linkit\SuggestionManager;
 use Drupal\pagedesigner\Entity\Element;
 use Drupal\user\Entity\Role;
 use Drupal\user\Entity\User;
+use Drupal\user\PermissionHandlerInterface;
 
 /**
  * Apply changes to configuration / environment on installation.
  */
 function iqual_install() {
   _set_iqual_base_settings();
-  $author = Role::load('author');
-  if ($author) {
-    $author->grantPermission('restful get frontendpublishing_transitions');
-    $author->grantPermission('restful patch frontendpublishing_transitions');
-    $author->grantPermission('restful patch frontendpublishing_move');
-    $author->grantPermission('restful patch frontendpublishing_publish');
-    $author->grantPermission('restful patch frontendpublishing_unpublish');
-    $author->grantPermission('restful patch frontendpublishing_copy');
-    $author->grantPermission('restful post frontendpublishing_copy');
-    $author->save();
-  }
 
-  $editor = Role::load('editor');
-  if ($editor) {
-    $editor->grantPermission('restful get frontendpublishing_transitions');
-    $editor->grantPermission('restful patch frontendpublishing_transitions');
-    $editor->grantPermission('restful patch frontendpublishing_move');
-    $editor->grantPermission('restful patch frontendpublishing_publish');
-    $editor->grantPermission('restful patch frontendpublishing_unpublish');
-    $editor->grantPermission('restful patch frontendpublishing_copy');
-    $editor->grantPermission('restful post frontendpublishing_copy');
-    $editor->save();
-  }
+  // Get an instance of the permission handler.
+  $permission_handler = \Drupal::service('user.permissions');
 
-  $designer = Role::load('designer');
-  if ($designer) {
-    $designer->grantPermission('restful get frontendpublishing_transitions');
-    $designer->grantPermission('restful patch frontendpublishing_transitions');
-    $designer->grantPermission('restful patch frontendpublishing_move');
-    $designer->grantPermission('restful patch frontendpublishing_publish');
-    $designer->grantPermission('restful patch frontendpublishing_unpublish');
-    $designer->grantPermission('restful patch frontendpublishing_copy');
-    $designer->grantPermission('restful post frontendpublishing_copy');
-    $designer->save();
+  // Get a list of all defined permissions.
+  $all_permissions = array_keys($permission_handler->getPermissions());
+
+  $roles = ['author', 'editor', 'designer'];
+  $permissions = [
+    'restful get frontendpublishing_transitions',
+    'restful patch frontendpublishing_transitions',
+    'restful patch frontendpublishing_move',
+    'restful patch frontendpublishing_publish',
+    'restful patch frontendpublishing_unpublish',
+    'restful patch frontendpublishing_copy',
+    'restful post frontendpublishing_copy',
+  ];
+
+  foreach ($roles as $role_name) {
+    $role = Role::load($role_name);
+    if ($role) {
+      foreach ($permissions as $permission) {
+        // Skip granting the permission if it doesn't exist.
+        if (!in_array($permission, $all_permissions)) {
+          continue;
+        }
+
+        $role->grantPermission($permission);
+      }
+
+      $role->save();
+    }
   }
 }
 
@@ -334,19 +333,25 @@ function iqual_update_10001(&$sandbox) {
  * Remove "administer site configuration" from pagedesigner roles.
  */
 function iqual_update_10002(&$sandbox) {
-  $roles = \Drupal::entityTypeManager()->getStorage('user_role')
-    ->loadMultiple(
-      [
-        'author',
-        'editor',
-        'designer',
-        'iqbm_author',
-        'iqbm_editor',
-        'iqbm_designer',
-        'iq_blog_author',
-        'authenticated',
-      ]
-    );
+  $potentialRoles = [
+    'author',
+    'editor',
+    'designer',
+    'iqbm_author',
+    'iqbm_editor',
+    'iqbm_designer',
+    'iq_blog_author',
+    'authenticated'
+  ];
+
+  $roleStorage = \Drupal::entityTypeManager()->getStorage('user_role');
+
+  // Filter out roles that don't exist.
+  $existingRoles = array_filter($potentialRoles, function ($role) use ($roleStorage) {
+    return $roleStorage->load($role) !== NULL;
+  });
+
+  $roles = $roleStorage->loadMultiple($existingRoles);
 
   /** @var \Drupal\user\Entity\Role $role */
   foreach ($roles as $role) {
